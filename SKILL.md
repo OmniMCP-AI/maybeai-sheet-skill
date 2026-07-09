@@ -85,14 +85,21 @@ Do not rely on defaults for non-first worksheets.
 
 See `references/read-write.md` for details.
 
-### 2. Choose the right engine before importing large files
+### 2. Choose the right engine before importing files
 
 MaybeAI Sheet routes `/api/v1/excel/*` through Playground, then into either `excelize-mcp` or SheetTable. Engine choice is a Playground routing decision.
 
-- Use SheetTable/PG for table-like workbooks when any worksheet has more than 10,000 rows, the workbook has more than 100,000 populated cells, the data is mostly flat records, or the workflow is SQL-heavy / append-upsert-heavy.
-- Use Excelize for workbook-style files where preserving Excel layout, styles, formulas, merged cells, and workbook semantics matters more than table scale.
-- For large table-like `.xlsx` uploads, prefer `POST /api/v1/excel/import` with multipart `engine=postgres`; avoid `/api/v1/excel/upload` for those large-data cases.
-- After import, verify `list_worksheets` reports `engine: "pg"` or worksheet `data_engine: "pg"`.
+- Use `POST /api/v1/excel/import/plan` with multipart `engine=auto` before importing unfamiliar workbooks.
+- Use SheetTable/PG for one-table, flat worksheets when row count is greater than 5,000 and every data column has one datatype except the header and missing values.
+- Use Excelize for workbook-style files where preserving Excel layout, styles, formulas, merged cells, multiple separated tables in one worksheet, and workbook semantics matters more than table scale.
+- For large table-like `.xlsx` uploads, prefer `POST /api/v1/excel/import` with multipart `engine=postgres`; explicit Postgres is strict and should return `PG_IMPORT_UNSUPPORTED_LAYOUT` for unsupported layouts.
+- Use multipart `engine=auto` when Excelize fallback is acceptable. Auto responses should expose `worksheet_engines[].final_engine` and fallback details.
+- After import, verify `list_worksheets` reports `engine: "pg"` / worksheet `data_engine: "pg"` for PG sheets and `excelize` for workbook-layout sheets.
+
+Examples:
+
+- `L1_广州瑞鹏_详细` in the LLM cost analysis workbook has two tables in one worksheet and should use Excelize.
+- `L1_客户集中度_帕累托` is a small single table; PG and Excelize are both acceptable, and auto may choose Excelize because it is not large.
 
 See `references/file-management.md` for the exact request.
 
