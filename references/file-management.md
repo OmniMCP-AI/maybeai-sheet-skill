@@ -36,10 +36,14 @@ MaybeAI Sheet uses Playground as the product-level router. It can create workboo
 
 Best practice:
 
-- If any worksheet has more than 10,000 rows, the workbook has more than 100,000 populated cells, or the file is mostly flat table data, import with `engine=postgres`.
+- Inspect unfamiliar files before import with `POST /api/v1/excel/import/plan` and multipart `engine=auto`.
+- Use `engine=postgres` for a worksheet only when it is one flat table, has more than 5,000 rows, and every data column has one datatype except the header and missing values. The older high-cell-count preference still applies when the data is one homogeneous table.
 - If the task depends on Excel-specific workbook fidelity, use the Excelize upload path and keep the dataset size modest.
+- Use Excelize for reports, summaries, dashboards, formulas, merged cells, styled workbooks, or worksheets with multiple separated tables. For example, `L1_广州瑞鹏_详细` in the LLM cost analysis workbook has two tables in one worksheet and should use Excelize.
+- A small single table such as `L1_客户集中度_帕累托` can use PG or Excelize; auto may choose Excelize because the sheet is not large.
+- Explicit `engine=postgres` is strict. If the worksheet is not PG-compatible, expect `PG_IMPORT_UNSUPPORTED_LAYOUT`. Use `engine=auto` when fallback to Excelize is acceptable.
 - Avoid sending large table data through row-object JSON writes or `/api/v1/excel/upload`; that path can fail when the server expands the workbook into large in-memory payloads.
-- After importing a large table file, call `list_worksheets` and confirm `engine: "pg"` or `data_engine: "pg"`.
+- After importing a file, check response `worksheet_engines[].selected_engine`, `worksheet_engines[].final_engine`, and any `fallback_reason`; then call `list_worksheets` and confirm `engine: "pg"` / `data_engine: "pg"` for PG sheets and `excelize` for workbook-layout sheets.
 
 ## 4. Core endpoints
 
@@ -55,6 +59,20 @@ Use this for large table-like `.xlsx` files: more than 10,000 rows in any worksh
 curl -sS -X POST "$BASE_URL/api/v1/excel/import" \
   -H "Authorization: Bearer $MAYBEAI_API_TOKEN" \
   -F "engine=postgres" \
+  -F "file=@/absolute/path/to/file.xlsx"
+```
+
+For unknown or mixed workbooks, inspect first and import with auto:
+
+```bash
+curl -sS -X POST "$BASE_URL/api/v1/excel/import/plan" \
+  -H "Authorization: Bearer $MAYBEAI_API_TOKEN" \
+  -F "engine=auto" \
+  -F "file=@/absolute/path/to/file.xlsx"
+
+curl -sS -X POST "$BASE_URL/api/v1/excel/import" \
+  -H "Authorization: Bearer $MAYBEAI_API_TOKEN" \
+  -F "engine=auto" \
   -F "file=@/absolute/path/to/file.xlsx"
 ```
 
@@ -78,7 +96,7 @@ curl -sS -X POST "$BASE_URL/api/v1/excel/list_worksheets" \
   -d '{"uri":"https://www.maybe.ai/docs/spreadsheets/d/<document_id>"}'
 ```
 
-Confirm the response reports `engine: "pg"` or worksheet `data_engine: "pg"`.
+Confirm the response reports the expected final engine for each worksheet.
 
 ### Upload a file
 
@@ -160,11 +178,12 @@ POST /api/v1/share/sheet/permission
 ### Bring a new file into the system
 
 1. Inspect approximate row count and workbook intent
-2. If table-like and rows > 10,000 or populated cells > 100,000, use `/api/v1/excel/import` with `engine=postgres`
-3. Otherwise use `upload` or `import_by_url`
-4. Record `document_id` and `uri`
-5. `list_worksheets`
-6. `read_headers` or a small `read_sheet`
+2. For unfamiliar files, call `/api/v1/excel/import/plan` with `engine=auto`
+3. If table-like and rows > 5,000 with homogeneous columns, use `/api/v1/excel/import` with `engine=postgres`
+4. If mixed or workbook-layout, use `/api/v1/excel/import` with `engine=auto` or Excelize
+5. Record `document_id` and `uri`
+6. `list_worksheets`
+7. `read_headers` or a small `read_sheet`
 
 ### Bring a large table-like file into the system
 
