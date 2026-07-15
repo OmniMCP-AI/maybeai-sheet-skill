@@ -29,6 +29,24 @@ curl -s -X POST "$BASE_URL/api/v1/excel/list_worksheets" \
   -d "{\"uri\": \"$DOC_URI\"}" \
   | jq .
 
+# ── Worksheet Metadata ───────────────────────────────────────────────────────
+# Fast sheet identity, gid, URL, source routing, and engine lookup.
+echo "=== Worksheet Metadata ==="
+curl -s -X POST "$BASE_URL/api/v1/excel/worksheet/metadata" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"uri\": \"$DOC_URI\"}" \
+  | jq .
+
+# ── Worksheet Dimensions ─────────────────────────────────────────────────────
+# Row/column counts and used-range details; target by gid/name for large files.
+echo "=== Worksheet Dimensions ==="
+curl -s -X POST "$BASE_URL/api/v1/excel/worksheet/dimensions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"uri\": \"$DOC_URI\", \"gid\": 0}" \
+  | jq .
+
 # ── List Worksheets with Version Info ────────────────────────────────────────
 echo "=== List Worksheets (with versions) ==="
 curl -s -X POST "$BASE_URL/api/v1/excel/list_worksheets_version" \

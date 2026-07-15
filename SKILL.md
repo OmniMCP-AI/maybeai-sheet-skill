@@ -62,7 +62,7 @@ bash scripts/11-lineage-trace.sh
 |---|---|
 | Upload or import Excel files | `references/file-management.md` |
 | Understand what a workbook contains before deciding what to read or analyze | `references/workbook-profile.md` |
-| Inspect worksheets, read headers, sample data | `references/read-write.md` |
+| Inspect worksheets, sheet metadata, dimensions, read headers, sample data | `references/read-write.md` |
 | Replace table data while keeping headers or formulas | `references/read-write.md` |
 | Update or append rows by business key | `references/read-write.md` |
 | Insert, delete, or move rows and columns; manage worksheets | `references/read-write.md` |
@@ -85,7 +85,22 @@ Do not rely on defaults for non-first worksheets.
 
 See `references/read-write.md` for details.
 
-### 2. Choose the right engine before importing files
+### 2. Use split worksheet discovery APIs when possible
+
+Playground now exposes worksheet discovery as two read-only viewer APIs:
+
+- `POST /api/v1/excel/worksheet/metadata`
+- `POST /api/v1/excel/worksheet/dimensions`
+
+Use `worksheet/metadata` when you need sheet identity, order, names, gids, worksheet URLs, source document routing, and per-sheet engines. It is registry-first and avoids blocking on full row/column dimension scans.
+
+Use `worksheet/dimensions` when you specifically need row counts, column counts, used ranges, table hints, exactness flags, or dimension refresh status. For large workbooks, pass `gid` or `worksheet_name` to limit the lookup to the target worksheet.
+
+Keep `list_worksheets` for legacy compatibility or simple flows. Avoid using `list_worksheets` with dimension enrichment as the default discovery step for large workbooks; call `worksheet/metadata` first, then `worksheet/dimensions` only for sheets where dimensions matter.
+
+See `references/read-write.md` for request and response details.
+
+### 3. Choose the right engine before importing files
 
 MaybeAI Sheet routes `/api/v1/excel/*` through Playground, then into either `excelize-mcp` or SheetTable. Engine choice is a Playground routing decision.
 
@@ -94,7 +109,7 @@ MaybeAI Sheet routes `/api/v1/excel/*` through Playground, then into either `exc
 - Use Excelize for workbook-style files where preserving Excel layout, styles, formulas, merged cells, multiple separated tables in one worksheet, and workbook semantics matters more than table scale.
 - For large table-like `.xlsx` uploads, prefer `POST /api/v1/excel/import` with multipart `engine=postgres`; explicit Postgres is strict and should return `PG_IMPORT_UNSUPPORTED_LAYOUT` for unsupported layouts.
 - Use multipart `engine=auto` when Excelize fallback is acceptable. Auto responses should expose `worksheet_engines[].final_engine` and fallback details.
-- After import, verify `list_worksheets` reports `engine: "pg"` / worksheet `data_engine: "pg"` for PG sheets and `excelize` for workbook-layout sheets.
+- After import, verify `worksheet/metadata` or `list_worksheets` reports `engine: "pg"` / worksheet `data_engine: "pg"` for PG sheets and `excelize` for workbook-layout sheets.
 
 Examples:
 
@@ -103,7 +118,7 @@ Examples:
 
 See `references/file-management.md` for the exact request.
 
-### 3. Prefer high-level write APIs before raw A1 writes
+### 4. Prefer high-level write APIs before raw A1 writes
 
 Priority order:
 
@@ -121,7 +136,7 @@ Meaning:
 
 `update_range` defaults to `RAW`: numeric-looking strings such as `"5.53%"` and `"9,007,000"` remain strings. Use `value_input_option=USER_ENTERED` only when the user intentionally wants Excel-like parsing of formulas, dates, numbers, and percentages. Check the write response `message`: `parse_result=NOT_REQUESTED` means RAW kept strings as text and lists them in `preserved_values`; `parse_result=PASS` means USER_ENTERED parsed values listed in `parsed_values`; `parse_result=PARTIAL` means values listed in `parsed_values` parsed, while `preserved_text_values` may stay text unless target cells are numeric-formatted.
 
-### 4. Separate data writes from style writes
+### 5. Separate data writes from style writes
 
 Do not assume `write_new_worksheet`, `update_range`, or `sql/write_result` will automatically apply formatting.
 
@@ -134,7 +149,7 @@ If the user wants a readable report or manager-facing table:
 
 See `references/charts-formatting.md` for the style playbook.
 
-### 5. Compile SQL before writing a result sheet
+### 6. Compile SQL before writing a result sheet
 
 Default SQL result-table flow:
 
@@ -146,12 +161,12 @@ Default SQL result-table flow:
 
 Do not skip `sql/compile`.
 
-### 6. Always read back after writing
+### 7. Always read back after writing
 
 Do at least one of the following:
 
 - `read_sheet`
-- `list_worksheets`
+- `worksheet/metadata` or `list_worksheets`
 - `read_headers`
 - Export the file and inspect it manually
 
@@ -162,7 +177,7 @@ Verification is especially required after:
 - Overwrite flows that preserve formulas or styles
 - Chart, image, or style changes
 
-### 7. Use workbook profile for broad workbook understanding
+### 8. Use workbook profile for broad workbook understanding
 
 Use `POST /api/v1/excel/workbook_profile` when the user asks what a workbook contains, which sheets are relevant, or where to start an analysis.
 
@@ -173,7 +188,7 @@ Use `POST /api/v1/excel/workbook_profile` when the user asks what a workbook con
 
 See `references/workbook-profile.md` for request and response details.
 
-### 8. Use lineage trace to explain computed cell dependencies
+### 9. Use lineage trace to explain computed cell dependencies
 
 Use `POST /api/v1/excel/lineage/trace` when the user asks where a formula result comes from, why a computed value is wrong, or which source columns feed a target cell.
 
@@ -184,7 +199,7 @@ Use `POST /api/v1/excel/lineage/trace` when the user asks where a formula result
 
 See `references/lineage-trace.md` for request and response details.
 
-### 9. Use clickable references only for confirmed workbook locations
+### 10. Use clickable references only for confirmed workbook locations
 
 When the final answer references real cells, ranges, or worksheets from the current Maybe Sheet workbook, follow `references/clickable-refs.md` so the frontend can make those references clickable.
 
@@ -196,7 +211,7 @@ When the final answer references real cells, ranges, or worksheets from the curr
 - Always use paired `sheet-ref` tags with visible text, never self-closing tags. Use `<sheet-ref kind="cell" docId="DOCUMENT_ID" gid="WORKSHEET_GID" sheet="Sheet1" range="A1">Sheet1!A1</sheet-ref>`, not `<sheet-ref .../>`.
 - Do not place clickable references inside code blocks, formulas, SQL, JSON, or shell examples
 
-### 10. Use the share API family for visibility changes
+### 11. Use the share API family for visibility changes
 
 When the user asks to make a Maybe Sheet public or private, use:
 
@@ -214,9 +229,10 @@ That spreadsheet-path share route is the wrong endpoint for MaybeAI Sheet visibi
 
 1. Upload or import the file
 2. Capture `document_id` and `uri`
-3. `list_worksheets`
-4. `read_headers`
-5. Optionally `read_sheet` for a small sample
+3. `worksheet/metadata` to identify names, gids, and engines
+4. `worksheet/dimensions` only when row/column counts or used ranges are needed
+5. `read_headers`
+6. Optionally `read_sheet` for a small sample
 
 References:
 

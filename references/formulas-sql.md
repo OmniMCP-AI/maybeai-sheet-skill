@@ -39,7 +39,7 @@ Script: `scripts/06-formulas.sh`
 
 Default flow:
 
-1. `list_worksheets`
+1. `worksheet/metadata` or `list_worksheets`
 2. `read_headers`
 3. Optionally `read_sheet` for a sample
 4. `sql/compile`

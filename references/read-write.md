@@ -4,11 +4,12 @@
 
 1. When to use this
 2. Worksheet targeting rules
-3. Read endpoints
-4. How to choose a write API
-5. Row and column operations
-6. Worksheet management
-7. Post-write verification
+3. Worksheet metadata and dimensions
+4. Read endpoints
+5. How to choose a write API
+6. Row and column operations
+7. Worksheet management
+8. Post-write verification
 
 ## 1. When to use this
 
@@ -31,7 +32,142 @@ Typical rules:
 
 If the user says “update the second sheet” or “append to Summary”, identify the sheet first, then execute the write.
 
-## 3. Read endpoints
+## 3. Worksheet metadata and dimensions
+
+Playground split worksheet discovery into two explicit read-only APIs. Both require viewer access and are available on the compatibility path used by this skill:
+
+```text
+POST /api/v1/excel/worksheet/metadata
+POST /api/v1/excel/worksheet/dimensions
+```
+
+The canonical V2 paths are also available:
+
+```text
+POST /api/v1/excel_v2/worksheet/metadata
+POST /api/v1/excel_v2/worksheet/dimensions
+```
+
+### `worksheet/metadata`
+
+Use this first when you need to identify worksheets before reading or writing.
+
+What it is:
+
+- A registry-first worksheet metadata endpoint.
+- It returns logical worksheet identity without blocking on full row/column scans.
+- It replaces the old habit of calling `list_worksheets` just to learn sheet names, gids, order, URLs, source routing, or engines.
+
+Typical request:
+
+```json
+{
+  "uri": "https://www.maybe.ai/docs/spreadsheets/d/<document_id>"
+}
+```
+
+Useful response fields:
+
+- Workbook fields: `document_id`, `spreadsheet_id`, `spreadsheet_url`, `spreadsheet_title`, `worksheet_count`
+- Worksheet identity: `title`, `name`, `worksheet_name`, `sheet_name`, `gid`, `sheet_id`, `index`, `worksheet_url`
+- Engine routing: `data_engine`, `style_engine`, `sql_engine`, `formula_engine`
+- Source routing: `source.document_id`, `source.gid`, `source.engine`, `source.logical_gid`, `source.logical_name`
+- Metadata marker: `source_info.operation: "worksheet_metadata"`, `source_info.metadata_only: true`, `source_info.metadata_source: "registry"`
+
+Do not expect this endpoint to return full `row_count`, `dimensions`, or `tables`. It may include a cheap `column_count` when PG metadata or a valid cache is available, but row counts and used ranges belong to `worksheet/dimensions`.
+
+Use it when:
+
+- choosing the correct worksheet by name or gid
+- verifying sheet order and worksheet URLs
+- checking whether each sheet is routed to `pg` or `excelize`
+- confirming the final engine after import
+- preparing a write request that must not default to the first sheet
+
+### `worksheet/dimensions`
+
+Use this only when dimensions actually matter.
+
+What it is:
+
+- A worksheet dimension lookup endpoint.
+- It calls the engine-specific `worksheet_dimensions` upstream and returns exact row/column metadata when available.
+- It does not include the old identity probe behavior; `source_info.identity_probe_included` should be `false`.
+
+Typical all-sheet request:
+
+```json
+{
+  "uri": "https://www.maybe.ai/docs/spreadsheets/d/<document_id>"
+}
+```
+
+Target a single worksheet in large workbooks:
+
+```json
+{
+  "uri": "https://www.maybe.ai/docs/spreadsheets/d/<document_id>",
+  "gid": 7
+}
+```
+
+or:
+
+```json
+{
+  "uri": "https://www.maybe.ai/docs/spreadsheets/d/<document_id>",
+  "worksheet_name": "Orders"
+}
+```
+
+Useful response fields:
+
+- `row_count`, `column_count`
+- `dimensions.rows`, `dimensions.columns`, `dimensions.ref`
+- `tables` when the upstream can identify table ranges
+- `row_count_exact`, `column_count_exact`
+- `dimension_source`, `column_count_source`
+- `dimension_stale`, `dimension_refreshing`
+- `source_info.dimension_source`: `upstream_enriched`, `registry_cache`, `upstream_and_registry_cache`, `partial`, or `registry_only`
+- `source_info.dimension_errors` when some dimensions could not be fetched
+
+For Excelize-backed worksheets, `force_refresh` and `use_cache` can control dimension cache behavior:
+
+```json
+{
+  "uri": "https://www.maybe.ai/docs/spreadsheets/d/<document_id>",
+  "worksheet_name": "Orders",
+  "force_refresh": true,
+  "use_cache": false
+}
+```
+
+These cache controls are not forwarded to PG-backed worksheets.
+
+Use it when:
+
+- deciding whether a sheet is too large for a full `read_sheet`
+- selecting a bounded `range_address`
+- estimating import or analysis size
+- finding the used range before writing a report block
+- checking table hints before SQL or bulk updates
+- verifying row/column dimensions after row, column, import, or worksheet operations
+
+### Relationship to `list_worksheets`
+
+`list_worksheets` remains available and is fine for legacy scripts or simple flows:
+
+```text
+POST /api/v1/excel/list_worksheets
+```
+
+Use the split APIs for newer agent workflows:
+
+- Need names, gids, URLs, sources, or engines: call `worksheet/metadata`.
+- Need row counts, column counts, used ranges, tables, or exactness flags: call `worksheet/dimensions`.
+- Need both: call `worksheet/metadata` first, then targeted `worksheet/dimensions` for the sheet(s) that matter.
+
+## 4. Read endpoints
 
 ### Read a full sheet or a range
 
@@ -73,7 +209,9 @@ POST /api/v1/excel/list_versions
 POST /api/v1/excel/read_version
 ```
 
-## 4. How to choose a write API
+Prefer `worksheet/metadata` over `list_worksheets` when you only need sheet identity or engine routing. Prefer `worksheet/dimensions` when you need row/column counts or used ranges.
+
+## 5. How to choose a write API
 
 ### `update_data_keep_headers`
 
@@ -134,7 +272,7 @@ Best when:
 - you need to clear a specific range
 - you want a local reset before a write
 
-## 5. Row and column operations
+## 6. Row and column operations
 
 Related endpoints:
 
@@ -159,7 +297,7 @@ Notes:
 - row numbers are 1-based
 - columns typically use Excel letters such as `A` and `B`
 
-## 6. Worksheet management
+## 7. Worksheet management
 
 Related endpoints:
 
@@ -176,13 +314,14 @@ Guidance:
 - When creating a new report sheet, write data first and style it separately
 - Before deleting a worksheet, confirm the `gid` or sheet name to avoid deleting the wrong sheet
 
-## 7. Post-write verification
+## 8. Post-write verification
 
 Do at least one of the following:
 
 - `read_sheet`
 - `read_headers`
-- `list_worksheets`
+- `worksheet/metadata` or `list_worksheets`
+- `worksheet/dimensions` when row/column counts should change
 
 Strongly recommended after:
 

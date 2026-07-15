@@ -31,7 +31,7 @@ Checks:
 Recovery:
 
 - reset the token
-- use `list_files` or `list_worksheets` as a minimal auth test
+- use `list_files`, `worksheet/metadata`, or `list_worksheets` as a minimal auth test
 
 ## 3. Wrote to the wrong worksheet
 
@@ -45,7 +45,7 @@ Causes:
 
 Recovery:
 
-1. `list_worksheets`
+1. `worksheet/metadata` or `list_worksheets`
 2. confirm the target sheet name and gid
 3. rewrite the request with explicit `worksheet_name` or `uri?gid=N`
 4. `read_sheet` to confirm
@@ -97,7 +97,7 @@ Recovery:
 
 Minimum verification standard:
 
-- `list_worksheets`
+- `worksheet/metadata` or `list_worksheets`
 - `read_sheet` on the key output range
 - optionally `export`
 

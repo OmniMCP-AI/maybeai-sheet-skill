@@ -108,7 +108,7 @@ limit 20
 
 Suggested flow:
 
-1. `list_worksheets`
+1. `worksheet/metadata` or `list_worksheets`
 2. `read_headers` to confirm the column names in `Orders` and `Products`
 3. Validate the raw SQL with `sql/compile`
 4. Confirm the spill area around `Report!A1` can be overwritten

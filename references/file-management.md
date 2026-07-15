@@ -43,7 +43,7 @@ Best practice:
 - A small single table such as `L1_客户集中度_帕累托` can use PG or Excelize; auto may choose Excelize because the sheet is not large.
 - Explicit `engine=postgres` is strict. If the worksheet is not PG-compatible, expect `PG_IMPORT_UNSUPPORTED_LAYOUT`. Use `engine=auto` when fallback to Excelize is acceptable.
 - Avoid sending large table data through row-object JSON writes or `/api/v1/excel/upload`; that path can fail when the server expands the workbook into large in-memory payloads.
-- After importing a file, check response `worksheet_engines[].selected_engine`, `worksheet_engines[].final_engine`, and any `fallback_reason`; then call `list_worksheets` and confirm `engine: "pg"` / `data_engine: "pg"` for PG sheets and `excelize` for workbook-layout sheets.
+- After importing a file, check response `worksheet_engines[].selected_engine`, `worksheet_engines[].final_engine`, and any `fallback_reason`; then call `worksheet/metadata` and confirm `engine: "pg"` / `data_engine: "pg"` for PG sheets and `excelize` for workbook-layout sheets. Use `list_worksheets` only when you need legacy compatibility.
 
 ## 4. Core endpoints
 
@@ -90,7 +90,7 @@ Expected success shape:
 Verification:
 
 ```bash
-curl -sS -X POST "$BASE_URL/api/v1/excel/list_worksheets" \
+curl -sS -X POST "$BASE_URL/api/v1/excel/worksheet/metadata" \
   -H "Authorization: Bearer $MAYBEAI_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"uri":"https://www.maybe.ai/docs/spreadsheets/d/<document_id>"}'
@@ -182,16 +182,18 @@ POST /api/v1/share/sheet/permission
 3. If table-like and rows > 5,000 with homogeneous columns, use `/api/v1/excel/import` with `engine=postgres`
 4. If mixed or workbook-layout, use `/api/v1/excel/import` with `engine=auto` or Excelize
 5. Record `document_id` and `uri`
-6. `list_worksheets`
-7. `read_headers` or a small `read_sheet`
+6. `worksheet/metadata`
+7. `worksheet/dimensions` when row/column counts or used ranges matter
+8. `read_headers` or a small `read_sheet`
 
 ### Bring a large table-like file into the system
 
 1. `POST /api/v1/excel/import` with multipart `engine=postgres`
 2. Record `document_id` and `uri`
-3. `list_worksheets`
+3. `worksheet/metadata`
 4. Confirm `engine: "pg"` or worksheet `data_engine: "pg"`
-5. `read_headers` or a small `read_sheet`
+5. `worksheet/dimensions` when row/column counts or used ranges matter
+6. `read_headers` or a small `read_sheet`
 
 ### Export before delivery
 

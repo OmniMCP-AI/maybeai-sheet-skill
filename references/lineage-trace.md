@@ -215,7 +215,7 @@ Use `node` when a UI, graph renderer, or downstream tool needs stable ids and ed
 
 ### Explain a wrong formula result
 
-1. `read_headers` or `list_worksheets` to confirm the sheet name/gid.
+1. `read_headers`, `worksheet/metadata`, or `list_worksheets` to confirm the sheet name/gid.
 2. Call `lineage/trace` with `format: "tree"`.
 3. Walk `lineage.depends_on` and summarize the chain in business terms.
 4. If a source column looks suspicious, use `read_sheet` to inspect sample values.
@@ -247,7 +247,7 @@ Important limits:
 
 Recovery:
 
-1. If the worksheet cannot be found, call `list_worksheets` and retry with the exact `worksheet_name` or `gid`.
+1. If the worksheet cannot be found, call `worksheet/metadata` or `list_worksheets` and retry with the exact `worksheet_name` or `gid`.
 2. If the target is not a formula, the result may be a `source_cell` or `source_column`; read nearby formulas if the user expected computation.
 3. If SQL lineage is incomplete, inspect the SQL formula text and validate source headers with `read_headers`.
 4. If lineage identifies the right columns but not the wrong values, switch to `read_sheet` for exact source rows.
