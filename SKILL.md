@@ -70,6 +70,7 @@ bash scripts/11-lineage-trace.sh
 | Explain where a formula cell, computed column, or SQL formula result comes from | `references/lineage-trace.md` |
 | Render confirmed Maybe Sheet cells, ranges, or worksheets as clickable references in final answers | `references/clickable-refs.md` |
 | Apply lightweight styling, freeze panes, or add autofilter | `references/charts-formatting.md` |
+| Beautify, polish, or visually restyle an existing worksheet | Switch to `maybeai-sheet-worksheet-style`; ordinary beautify should be one `mbs style beautify --url <url> --output json` command |
 | Troubleshoot auth, wrong-sheet writes, ignored styles, or SQL compile errors | `references/errors-recovery.md` |
 | Build chart-heavy pages or dashboards | Switch to `sheet-dashboard`; this skill only covers low-level spreadsheet and chart APIs |
 
@@ -117,6 +118,20 @@ Meaning:
 ### 4. Separate data writes from style writes
 
 Do not assume `write_new_worksheet`, `update_range`, or `sql/write_result` will automatically apply formatting.
+
+If the user asks to beautify, polish, or visually restyle an existing Maybe
+Sheet worksheet, do not assemble a manual sequence of `freeze_panes`,
+`batch_set_cell_style`, width, height, and autofilter calls. Switch to
+`maybeai-sheet-worksheet-style` and use its default one-command path:
+
+```bash
+mbs style beautify --url "<user_maybe_sheet_url>" --output json
+```
+
+That command owns Excelize vs PG routing, sample-based width/formatter
+decisions, and default row banding. Do not add `--dry-run`, `--verify`, or
+`--config` unless the user explicitly asks for preview, verification, or custom
+style config.
 
 If the user wants a readable report or manager-facing table:
 
