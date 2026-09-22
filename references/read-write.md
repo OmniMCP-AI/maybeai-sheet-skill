@@ -314,6 +314,64 @@ Guidance:
 - When creating a new report sheet, write data first and style it separately
 - Before deleting a worksheet, confirm the `gid` or sheet name to avoid deleting the wrong sheet
 
+### `write_new_worksheet` type controls
+
+The request accepts `schema`, the legacy compatibility alias `field_schema`,
+and `auto_adapt_type`. Resolve them in this order:
+
+1. a non-empty `schema`
+2. otherwise a non-empty `field_schema`
+3. otherwise `auto_adapt_type` (`true`/auto or `false`/strict JSON)
+
+A non-empty `schema` is exact and authoritative. It defines the column names,
+order, logical type, UI/field type, PostgreSQL type, properties, and indexes;
+header/date/number/boolean heuristics must not override it. If both `schema` and
+`field_schema` are non-empty, reject the request with a schema conflict. An
+omitted or empty legacy `field_schema` remains compatible and does not act as a
+partial schema. A schema-only write may create an empty typed worksheet, but
+the schema must still be valid and complete.
+
+API and MCP callers preserve the historical default: omitting
+`auto_adapt_type` means auto-adaptation (`true`) when neither schema key is
+present. Send `auto_adapt_type: false` explicitly to request strict JSON
+scalar mode. The CLI intentionally differs: all worksheet-create aliases send
+`auto_adapt_type: false` when their flag is omitted; use `--auto-adapt-type` to
+opt into auto mode.
+
+For deterministic text columns, send a complete schema. This keeps a date-like
+string and boolean-like string as Text even when auto adaptation is enabled:
+
+```json
+{
+  "uri": "https://www.maybe.ai/docs/spreadsheets/d/<document_id>",
+  "worksheet_name": "orders",
+  "values": [
+    ["order_created_at", "exception_flag"],
+    ["2026-09-20", "true"]
+  ],
+  "schema": [
+    {"name": "order_created_at", "logical_type": "text", "field_type": "text", "pg_type": "text", "index": 1},
+    {"name": "exception_flag", "logical_type": "text", "field_type": "text", "pg_type": "text", "index": 2}
+  ],
+  "auto_adapt_type": true
+}
+```
+
+The result is Text/Text because `schema` wins. In strict mode, JSON scalar
+kind—not string content—controls the fallback type. `"true"`, `"1.25"`, and
+`"2026-09-20"` are strings and remain Text; `true` is a native boolean and
+maps to Checkbox, and `1.25` is a native number and maps to Number. JSON has no
+native date scalar, so a date-looking string is not a native date. Objects and
+arrays are invalid cell values. A column mixing string, boolean, and number
+values is rejected; nulls do not vote on type, and an all-null column becomes
+Text.
+
+An explicit schema must be non-empty, complete for every written column, have
+unique names and valid indexes, and match the header/data width. Missing or
+duplicate columns, invalid indexes, and schema/data mismatches return stable
+4xx errors such as `schema_incomplete` or `schema_mismatch`; incompatible cell
+values are rejected before worksheet mutation or history creation.
+
 ## 8. Post-write verification
 
 Do at least one of the following:
